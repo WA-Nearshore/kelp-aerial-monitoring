@@ -1,11 +1,21 @@
+# Imports
+import arcpy
+from arcpy import ia
+import os
+from arcpy.sa import SegmentMeanShift
+
+# Check out Image Analyst and Spatial Analyst license extensions
+arcpy.CheckOutExtension("ImageAnalyst")
+arcpy.CheckOutExtension("Spatial")
+
 # Set your home directory where you will be working
-homeDir = "HOME_DIRECTORY_HERE" # type: ignore
+homeDir = "HOME_DIRECTORY_HERE" 
 # Outputs and intermediate files will be written to this directory
 # Mask shapefiles must be in this directory under {homeDir}/Masked_layers/{AOI}/
 
 # Set the directory where the orthomosaics are stored 
 # (can be the same or different from home, I keep orthos on external drives due to their size)
-orthoDir= "ORTHO_DIRECTORY_HERE" # type: ignore
+orthoDir= "ORTHO_DIRECTORY_HERE" 
 # GeoTIFF imagery must be stored under: {orthoDir}/{AOI_name}/Orthophotography Data/GeoTIFF/
 
 # Select which AOI (areas of interest) to run the tool for. 
@@ -56,15 +66,6 @@ def clip_mask(AOI,AOI_name,
         - GeoTIFF imagery must be stored under: {orthoDir}/{AOI_name}/Orthophotography Data/GeoTIFF/
         - Mask shapefile must be stored under: {homeDir}/Masked_layers/{AOI}/
     """
-
-    import arcpy
-    from arcpy import ia
-    import os
-
-    # Check out Image Analyst and Spatial Analyst license extensions
-    arcpy.CheckOutExtension("ImageAnalyst")
-    arcpy.CheckOutExtension("Spatial")
-
     # set path to working directory containing orthomosaic GeoTIFF tiles (e.g., SW_360.tif")
     workingDir = f"{orthoDir}/{AOI_name}/Orthophotography Data/GeoTIFF"
     # set path to directory containing mask shapefiles (e.g., "SW_masks_tc.shp")
@@ -166,17 +167,10 @@ def segment_BNDVI(AOI,homeDir):
         - Uses 75% of CPU cores.
         - Requires ArcPy with the Spatial Analyst extension.
     """
-    import os
-    import arcpy
-    from arcpy.sa import SegmentMeanShift
-
     # Use 75% of the cores on the machine
     arcpy.env.parallelProcessingFactor = "75%"
     arcpy.env.overwriteOutput = True
     
-    # Check out a Spatial Analyst license  
-    arcpy.CheckOutExtension("Spatial")  
-
     inRaster = f"{homeDir}/Clipped_imagery/{AOI}/{AOI}_masked_index_results.gdb/{AOI}_BNDVI_masked_index_mosaic"
     print(inRaster)
     # Create temporary raster for smoother processing
@@ -210,14 +204,8 @@ def extract_BNDVISegRaster(AOI,homeDir):
         - Requires ArcPy and Spatial Analyst extension.
         - Overwrites existing outputs with the same name.
     """
-    import arcpy
-    import os
-
     arcpy.env.overwriteOutput = True
     
-    # Check out Spatial Analyst extension
-    arcpy.CheckOutExtension("Spatial") 
-
     inRaster=f"{homeDir}/Segmented_BNDVI/{AOI}/{AOI}_BNDVI_segmented.tif"
     inMaskData=f"{homeDir}/Clipped_imagery/{AOI}/{AOI}_masked_index_results.gdb/{AOI}_image_masked_index_mosaic"
     print("inRaster", inRaster)
@@ -247,16 +235,9 @@ def cluster(AOI,homeDir):
     Notes: 
         - Requires Image Analyst and Spatial Analyst license extensions 
     """
-    import arcpy
-    import os
-
     # Use 75% of the cores on the machine
     arcpy.env.parallelProcessingFactor = "75%"
     arcpy.env.overwriteOutput = True
-
-    # Check out Image Analyst and Spatial Analyst license extensions
-    arcpy.CheckOutExtension("ImageAnalyst")
-    arcpy.CheckOutExtension("Spatial")
 
     inRaster=f"{homeDir}/Clipped_imagery/{AOI}/{AOI}_masked_index_results.gdb/{AOI}_image_masked_index_mosaic"
     arcpy.management.SetMosaicDatasetProperties(inRaster,mosaic_operator="MAX")
