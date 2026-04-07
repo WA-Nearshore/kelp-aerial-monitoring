@@ -1,9 +1,12 @@
 # Set your home directory where you will be working
-homeDir = HOME_DIRECTORY_HERE # type: ignore
+homeDir = "HOME_DIRECTORY_HERE" # type: ignore
+# Outputs and intermediate files will be written to this directory
+# Mask shapefiles must be in this directory under {homeDir}/Masked_layers/{AOI}/
 
 # Set the directory where the orthomosaics are stored 
 # (can be the same or different from home, I keep orthos on external drives due to their size)
-orthoDir= ORTHO_DIRECTORY_HERE # type: ignore
+orthoDir= "ORTHO_DIRECTORY_HERE" # type: ignore
+# GeoTIFF imagery must be stored under: {orthoDir}/{AOI_name}/Orthophotography Data/GeoTIFF/
 
 # Select which AOI (areas of interest) to run the tool for. 
 # This takes "AOI" and "AOI_name", with "AOI" being the acronym and "AOI_name" being the full name with underscores
@@ -17,6 +20,20 @@ datasets = [
     ("SWH", "Saratoga_Whidbey"),
 ]
 
+# Set tool parameters for segmentation
+spectralDetail = 20 # [1-20], greater = higher discrimination e.g. btw species
+spatialDetail = 20 # [1-20], greater = better for smaller/clustered together things
+minSeg = 2 # related to minimum mapping unit, units = pixels, 2 = 30cm
+maxSeg = None # optional # related to minimum mapping unit, units = pixels, prevents artifacts due to large segments
+
+# Set tool parameters for train isocluster
+maxClasses = 10 # max number of classes to cluster pixels into
+maxIterations = 20 # recommended 10-20, greater = more processing time, default = 20
+minSamplesPerCluster = 20 # minimum number of pixels in a valid cluster class, default = 20
+skipFactor = 10 # greater = more pixels skipped when training classifier (speed/accuracy trade-off); 10 = every 10th pixel sampled 
+usedAttributes = "COLOR;MEAN;STD" # optional # attributes included in output raster attribute table
+maxMergePerIter = 5 # optional # greater = fewer classes (more merging)
+# maxMergeDistance=0.75 # optional # recommended 0 - 5, greater = fewer classes (more merging)
 
 def clip_mask(AOI,AOI_name,
               orthoDir, 
@@ -28,21 +45,26 @@ def clip_mask(AOI,AOI_name,
         orthoDir (str): Directory path for ortho tiles.
         AOI_name (str): Name of the Area of Interest, used to construct file paths.
         homeDir (str): Base directory for project files.
-        AOI (str): 3 digit code for aoi, used to construct file paths.
+        AOI (str): 3 digit code for AOI, used to construct file paths.
 
     Outputs:
-        - Clipped images: <homeDir>/Clipped_imagery/<AOI>/clipped_image_tiles/image/
-        - BNDVI rasters: <homeDir>/Clipped_imagery/<AOI>/clipped_image_tiles/BNDVI/
+        - Clipped images: {homeDir}/Clipped_imagery/{AOI}/clipped_image_tiles/image/
+        - BNDVI rasters: {homeDir}/Clipped_imagery/{AOI}/clipped_image_tiles/BNDVI/
 
     Notes:
-        - Requires ArcPy and Image Analyst extension.
-        - GeoTIFF imagery stored under: <orthoDir>/<AOI_name>/Orthophotography Data/GeoTIFF
-        - Mask shapefiles stored under: <homeDir>/Masked_layers/<AOI>, can have any name
+        - Requires ArcPy, Spatial Analyst, and Image Analyst extensions.
+        - GeoTIFF imagery must be stored under: {orthoDir}/{AOI_name}/Orthophotography Data/GeoTIFF/
+        - Mask shapefile must be stored under: {homeDir}/Masked_layers/{AOI}/
     """
 
     import arcpy
     from arcpy import ia
     import os
+
+    # Check out Image Analyst and Spatial Analyst license extensions
+    arcpy.CheckOutExtension("ImageAnalyst")
+    arcpy.CheckOutExtension("Spatial")
+
     # set path to working directory containing orthomosaic GeoTIFF tiles (e.g., SW_360.tif")
     workingDir = f"{orthoDir}/{AOI_name}/Orthophotography Data/GeoTIFF"
     # set path to directory containing mask shapefiles (e.g., "SW_masks_tc.shp")
@@ -88,7 +110,7 @@ def clip_mask(AOI,AOI_name,
                         # # optional: save clipped imagery as well as index result below
                         clipOutLoc = os.path.join(outDir, "image", "{}_{}_{}_image.tif".format(raster[:-4], mask[-12:-4], rowCount))
                         if not os.path.exists(clipOutLoc):
-                            arcpy.CopyRaster_management(maskClip, clipOutLoc) # may want to add "nodata_value="0"" here at some point but dont want to break it now
+                            arcpy.management.CopyRaster(maskClip, clipOutLoc) # may want to add "nodata_value="0"" here at some point but dont want to break it now
                         ##################################################################################################
                         # set paths and names for clipped imagery index outputs, run Band Arithmetic to calculate indices,
                         # and use Copy Raster to save results to output paths
@@ -97,7 +119,7 @@ def clip_mask(AOI,AOI_name,
                         BNDVIout = os.path.join(outDir, "BNDVI", "{}_{}_{}_BNDVI.tif".format(raster[:-4], mask[-12:-4], rowCount))
                         if not os.path.exists(BNDVIout):
                             BNDVI = arcpy.sa.BandArithmetic(maskClip, "4 3", 1)
-                            arcpy.CopyRaster_management(BNDVI, BNDVIout)
+                            arcpy.management.CopyRaster(BNDVI, BNDVIout)
                         rowCount += 1
 
     # create geodatabase and mosaic dataset in gdb output directory location
@@ -144,19 +166,17 @@ def segment_BNDVI(AOI,homeDir):
         - Uses 75% of CPU cores.
         - Requires ArcPy with the Spatial Analyst extension.
     """
-    import arcpy
     import os
+    import arcpy
+    from arcpy.sa import SegmentMeanShift
+
     # Use 75% of the cores on the machine
     arcpy.env.parallelProcessingFactor = "75%"
     arcpy.env.overwriteOutput = True
-    from arcpy import CheckOutExtension # Check out a Spatial Analyst license
-    CheckOutExtension("Spatial")    
-    from arcpy.sa import SegmentMeanShift
-    # Set details for segmentation
-    spectralDetail = 20 # [1-20], greater = higher discrimination e.g. btw species
-    spatialDetail = 20 # [1-20], greater = better for smaller/clustered together things
-    minSeg = 2 # related to minimum mapping unit, units = pixels, 2 = 30cm
-    maxSeg = None # optional # related to minimum mapping unit, units = pixels, prevents artifacts due to large segments
+    
+    # Check out a Spatial Analyst license  
+    arcpy.CheckOutExtension("Spatial")  
+
     inRaster = f"{homeDir}/Clipped_imagery/{AOI}/{AOI}_masked_index_results.gdb/{AOI}_BNDVI_masked_index_mosaic"
     print(inRaster)
     # Create temporary raster for smoother processing
@@ -183,16 +203,21 @@ def extract_BNDVISegRaster(AOI,homeDir):
         AOI (str): The name of the Area of Interest used to locate input and output files.
         homeDir (str, optional): Base directory containing input data and where output will be saved. Defaults to a preset path.
 
+    Outputs:
+        Saves the extracted raster as '<AOI>_BNDVI_segmented_clip.tif' in the segmented BNDVI directory.    
+
     Notes:
-        - Requires an active ArcPy environment with Spatial Analyst extension.
+        - Requires ArcPy and Spatial Analyst extension.
         - Overwrites existing outputs with the same name.
-        - Saves the extracted raster as '<AOI>_BNDVI_segmented_clip.tif' in the segmented BNDVI directory.
     """
     import arcpy
     import os
-    from arcpy import CheckOutExtension # Check out a Spatial Analyst license
+
     arcpy.env.overwriteOutput = True
-    CheckOutExtension("Spatial")    
+    
+    # Check out Spatial Analyst extension
+    arcpy.CheckOutExtension("Spatial") 
+
     inRaster=f"{homeDir}/Segmented_BNDVI/{AOI}/{AOI}_BNDVI_segmented.tif"
     inMaskData=f"{homeDir}/Clipped_imagery/{AOI}/{AOI}_masked_index_results.gdb/{AOI}_image_masked_index_mosaic"
     print("inRaster", inRaster)
@@ -208,29 +233,31 @@ def extract_BNDVISegRaster(AOI,homeDir):
     out_raster.save(outDir + "/" + AOI + "_BNDVI_segmented_clip.tif")
     print("Extraction of", AOI, "raster complete!",sep=" ")
 
-def cluster(AOI,homeDir,minSamplesPerCluster=20): 
+def cluster(AOI,homeDir): 
     """
     Performs iso-cluster classification on imagery using ArcPy.
 
     Parameters:
         AOI (str): Area of Interest name for file paths.
         homeDir (str, optional): Base directory for data. Defaults to a preset path.
-        minSamplesPerCluster (int, optional): Minimum samples per cluster. Defaults to 20.
 
     Outputs:
         Saves classified raster to '<homeDir>/Classified_Rasters/<AOI>/'.
 
     Notes: 
-        - Requires Image Analyst extension 
+        - Requires Image Analyst and Spatial Analyst license extensions 
     """
     import arcpy
     import os
+
     # Use 75% of the cores on the machine
     arcpy.env.parallelProcessingFactor = "75%"
     arcpy.env.overwriteOutput = True
-    from arcpy import CheckOutExtension
-    CheckOutExtension("ImageAnalyst")
-    CheckOutExtension("Spatial")
+
+    # Check out Image Analyst and Spatial Analyst license extensions
+    arcpy.CheckOutExtension("ImageAnalyst")
+    arcpy.CheckOutExtension("Spatial")
+
     inRaster=f"{homeDir}/Clipped_imagery/{AOI}/{AOI}_masked_index_results.gdb/{AOI}_image_masked_index_mosaic"
     arcpy.management.SetMosaicDatasetProperties(inRaster,mosaic_operator="MAX")
     BNDVIRaster=f"{homeDir}/Segmented_BNDVI/{AOI}/{AOI}_BNDVI_segmented_clip.tif"
@@ -250,20 +277,20 @@ def cluster(AOI,homeDir,minSamplesPerCluster=20):
     colorCompositeRaster = arcpy.ia.ExtractBand(inRaster,[4,2,3])
     tmp_raster = os.path.join(outDir, f"{AOI}_color_composite.tif")
     print("Saving colorCompositeRaster...")
-    arcpy.CopyRaster_management(colorCompositeRaster, tmp_raster)
+    arcpy.management.CopyRaster(colorCompositeRaster, tmp_raster)
 
     # TrainIsoClusterClassifier(in_raster, max_classes, out_classifier_definition, 
     #       {in_additional_raster}, {max_iterations}, {min_samples_per_cluster}, 
     #       {skip_factor}, {used_attributes}, {max_merge_per_iter}, {max_merge_distance})
     #print("Skip TrainIsoClusterClassifier...")
     print("Running TrainIsoClusterClassifier...")
-    arcpy.ia.TrainIsoClusterClassifier(in_raster=tmp_raster, max_classes=10, 
+    arcpy.ia.TrainIsoClusterClassifier(in_raster=tmp_raster, max_classes=maxClasses, 
                                        out_classifier_definition=ClassifierDefinition, 
                                        in_additional_raster=BNDVIRaster, 
-                                       max_iterations=20, min_samples_per_cluster=minSamplesPerCluster, 
-                                       skip_factor=10, 
-                                       used_attributes="COLOR;MEAN;STD", 
-                                       max_merge_per_iter=5) #, max_merge_distance=0.75
+                                       max_iterations=maxIterations, min_samples_per_cluster=minSamplesPerCluster, 
+                                       skip_factor=skipFactor, 
+                                       used_attributes=usedAttributes, 
+                                       max_merge_per_iter=maxMergePerIter) #, max_merge_distance=maxMergeDistance
     print("Running ClassifyRaster...")
     ClassifiedRaster=arcpy.ia.ClassifyRaster(in_raster=tmp_raster,
                      in_additional_raster=BNDVIRaster,
