@@ -1,8 +1,7 @@
 # kelp-aerial-monitoring
 
-Analysis of Kelp Aerial Monitoring (KAM) imagery
+**Washington State Department of Natural Resources**
+**Nearshore Habitat Program** 
 
-Data are stored externally - original data on hard drives
-
-Data are processed locally - intermediate files are located on the local hard drive for processing efficacy. 
+The purpose of this repository is classification of aerial imagery collected for floating kelp mapping and monitoring in Washington State. For more information, visit https://dnr.wa.gov/aquatics/aquatic-science/nearshore-habitat-program
 
